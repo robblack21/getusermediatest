@@ -55,6 +55,7 @@ async function testCamera(resolution, fps) {
             await new Promise(resolve => setTimeout(resolve, 100));
         }
         // Use the last stream for video and measure onset latency for just this one
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Ensure pause before measuring onset latency
         let onsetStart = performance.now();
         stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
