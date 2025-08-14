@@ -1,3 +1,10 @@
+function stddev(arr) {
+    if (!arr.length) return 'Error';
+    const mean = arr.reduce((a,b)=>a+b,0)/arr.length;
+    const sqDiffs = arr.map(v => Math.pow(v-mean,2));
+    const avgSqDiff = sqDiffs.reduce((a,b)=>a+b,0)/arr.length;
+    return Math.sqrt(avgSqDiff).toFixed(3);
+}
 const resolutions = [
     [192, 108],
     [320, 180],
@@ -21,7 +28,7 @@ async function testCamera(resolution, fps) {
     let onsetLatency = null;
     let frameTimes = [];
     let actualFps = 0;
-    let getUserMediaCpuTime = null;
+    let getUserMediaCpuTimes = [];
     let canvasDrawTimes = [];
     let videoTrack;
     let stream;
@@ -34,15 +41,22 @@ async function testCamera(resolution, fps) {
                 frameRate: { exact: fps }
             }
         };
-        const gUMStart = performance.now();
+        // Take 5 samples for getUserMedia CPU time
+        for (let i = 0; i < 5; i++) {
+            const gUMStart = performance.now();
+            let s = await navigator.mediaDevices.getUserMedia(constraints);
+            getUserMediaCpuTimes.push(performance.now() - gUMStart);
+            s.getTracks().forEach(t => t.stop());
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        // Use the last stream for video
         stream = await navigator.mediaDevices.getUserMedia(constraints);
-        getUserMediaCpuTime = performance.now() - gUMStart;
         video.srcObject = stream;
         videoTrack = stream.getVideoTracks()[0];
         // Wait for video to show new frame
         await new Promise(resolve => {
             const handler = () => {
-                onsetLatency = performance.now() - gUMStart;
+                onsetLatency = performance.now() - getUserMediaCpuTimes[getUserMediaCpuTimes.length-1];
                 video.removeEventListener('playing', handler);
                 resolve();
             };
@@ -100,7 +114,7 @@ async function testCamera(resolution, fps) {
     } catch (e) {
         onsetLatency = 'Error';
         frameTimes = [];
-        getUserMediaCpuTime = 'Error';
+        getUserMediaCpuTimes = [];
         canvasDrawTimes = [];
         actualFps = 0;
     } finally {
@@ -111,9 +125,11 @@ async function testCamera(resolution, fps) {
         resolution: `${resolution[0]}x${resolution[1]}`,
         fps,
         frameTime: frameTimes.length ? (frameTimes.reduce((a,b)=>a+b,0)/frameTimes.length).toFixed(1) : 'Error',
-        getUserMediaCpuTime: typeof getUserMediaCpuTime === 'number' ? getUserMediaCpuTime.toFixed(1) : getUserMediaCpuTime,
+        getUserMediaCpuTime: getUserMediaCpuTimes.length ? (getUserMediaCpuTimes.reduce((a,b)=>a+b,0)/getUserMediaCpuTimes.length).toFixed(1) : 'Error',
+        getUserMediaCpuStdDev: getUserMediaCpuTimes.length ? stddev(getUserMediaCpuTimes) : 'Error',
         onsetLatency: typeof onsetLatency === 'number' ? onsetLatency.toFixed(1) : onsetLatency,
         canvasDrawTime: canvasDrawTimes.length ? (canvasDrawTimes.reduce((a,b)=>a+b,0)/canvasDrawTimes.length).toFixed(3) : 'Error',
+        canvasDrawStdDev: canvasDrawTimes.length ? stddev(canvasDrawTimes) : 'Error',
         actualFps: actualFps.toFixed(1)
     };
 }
@@ -127,28 +143,31 @@ async function runTests() {
         await testCamera(resolutions[0], frameRates[0]);
     } catch (e) {}
     // Full sequence
-    for (let res of resolutions) {
-        for (let fps of frameRates) {
-            let result;
-            try {
-                result = await testCamera(res, fps);
-            } catch (e) {
-                result = {
-                    resolution: `${res[0]}x${res[1]}`,
-                    fps,
-                    frameTime: 'Error',
-                    getUserMediaCpuTime: 'Error',
-                    onsetLatency: 'Error',
-                    canvasDrawTime: 'Error',
-                    actualFps: 'Error'
-                };
+        for (let res of resolutions) {
+            for (let fps of frameRates) {
+                let result;
+                try {
+                    result = await testCamera(res, fps);
+                } catch (e) {
+                    result = {
+                        resolution: `${res[0]}x${res[1]}`,
+                        fps,
+                        frameTime: 'Error',
+                        getUserMediaCpuTime: 'Error',
+                        getUserMediaCpuStdDev: 'Error',
+                        onsetLatency: 'Error',
+                        canvasDrawTime: 'Error',
+                        canvasDrawStdDev: 'Error',
+                        actualFps: 'Error'
+                    };
+                }
+                lastResults.push(result);
+                const row = document.createElement('tr');
+                row.innerHTML = `<td>${result.resolution}</td><td>${result.fps}</td><td>${result.frameTime}</td><td>${result.getUserMediaCpuTime}</td><td>${result.getUserMediaCpuStdDev}</td><td>${result.onsetLatency}</td><td>${result.canvasDrawTime}</td><td>${result.canvasDrawStdDev}</td><td>${result.actualFps}</td>`;
+                resultsTable.appendChild(row);
+                await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second pause
             }
-            lastResults.push(result);
-            const row = document.createElement('tr');
-            row.innerHTML = `<td>${result.resolution}</td><td>${result.fps}</td><td>${result.frameTime}</td><td>${result.getUserMediaCpuTime}</td><td>${result.onsetLatency}</td><td>${result.canvasDrawTime}</td><td>${result.actualFps}</td>`;
-            resultsTable.appendChild(row);
         }
-    }
 function downloadTableAsCSV() {
     if (!lastResults.length) return;
     const headers = ['Resolution','FPS','Frame Time (ms)','getUserMedia CPU Time (ms)','Onset Latency (ms)','Canvas Draw Time (ms)','Actual FPS'];
