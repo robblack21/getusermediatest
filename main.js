@@ -74,7 +74,7 @@ async function testCamera(resolution, fps) {
         // Measure frame time and canvas draw time for 2 seconds
         let frames = 0;
         let prev = null;
-        const measureTime = 2000;
+    const measureTime = 5000;
         const endTime = performance.now() + measureTime;
         function countFrame(now, metadata) {
             if (performance.now() > endTime) return;
@@ -132,7 +132,6 @@ async function testCamera(resolution, fps) {
         fps,
         frameTime: frameTimes.length ? (frameTimes.reduce((a,b)=>a+b,0)/frameTimes.length).toFixed(1) : 'Error',
         getUserMediaCpuTime: getUserMediaCpuTimes.length ? (getUserMediaCpuTimes.reduce((a,b)=>a+b,0)/getUserMediaCpuTimes.length).toFixed(1) : 'Error',
-        getUserMediaCpuStdDev: getUserMediaCpuTimes.length ? stddev(getUserMediaCpuTimes) : 'Error',
         onsetLatency: typeof onsetLatency === 'number' ? onsetLatency.toFixed(1) : onsetLatency,
         canvasDrawTime: canvasDrawTimes.length ? (canvasDrawTimes.reduce((a,b)=>a+b,0)/canvasDrawTimes.length).toFixed(3) : 'Error',
         canvasDrawStdDev: canvasDrawTimes.length ? stddev(canvasDrawTimes) : 'Error',
