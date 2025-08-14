@@ -10,6 +10,7 @@ const resolutions = [
 ];
 const frameRates = [15, 20, 30];
 const video = document.getElementById('video');
+const canvas = document.getElementById('canvas');
 const startBtn = document.getElementById('startTest');
 const resultsTable = document.getElementById('resultsTable').querySelector('tbody');
 
@@ -17,8 +18,9 @@ const resultsTable = document.getElementById('resultsTable').querySelector('tbod
 async function testCamera(resolution, fps) {
     let onsetLatency = null;
     let frameTimes = [];
-    let gpuDrawTimes = [];
     let actualFps = 0;
+    let getUserMediaCpuTime = null;
+    let canvasDrawTimes = [];
     let videoTrack;
     let stream;
 
@@ -30,60 +32,74 @@ async function testCamera(resolution, fps) {
                 frameRate: { exact: fps }
             }
         };
-        const connectTime = performance.now();
+        const gUMStart = performance.now();
         stream = await navigator.mediaDevices.getUserMedia(constraints);
+        getUserMediaCpuTime = performance.now() - gUMStart;
         video.srcObject = stream;
         videoTrack = stream.getVideoTracks()[0];
         // Wait for video to show new frame
         await new Promise(resolve => {
             const handler = () => {
-                onsetLatency = performance.now() - connectTime;
+                onsetLatency = performance.now() - gUMStart;
                 video.removeEventListener('playing', handler);
                 resolve();
             };
             video.addEventListener('playing', handler);
         });
-        // Measure frame time and GPU draw time for 2 seconds
-        let prev = null;
+        // Set canvas size
+        canvas.width = resolution[0];
+        canvas.height = resolution[1];
+        // Measure frame time and canvas draw time for 2 seconds
         let frames = 0;
+        let prev = null;
         const measureTime = 2000;
         const endTime = performance.now() + measureTime;
-        let gpuPrev = null;
-        function onFrame() {
+        function countFrame(now, metadata) {
             if (performance.now() > endTime) return;
-            let now = performance.now();
             frames++;
             if (prev) {
-                let dt = now - prev;
-                frameTimes.push(dt);
+                frameTimes.push(now - prev);
             }
             prev = now;
-            requestAnimationFrame(onFrame);
-        }
-        requestAnimationFrame(onFrame);
-
-        // GPU draw time using requestVideoFrameCallback
-        let gpuFrames = 0;
-        function gpuFrameCallback(now, metadata) {
-            if (gpuFrames > 0 && gpuPrev) {
-                gpuDrawTimes.push(now - gpuPrev);
-            }
-            gpuPrev = now;
-            gpuFrames++;
-            if (performance.now() < endTime) {
-                video.requestVideoFrameCallback(gpuFrameCallback);
-            }
+            // Measure canvas draw time
+            const ctx = canvas.getContext('2d');
+            const drawStart = performance.now();
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const drawEnd = performance.now();
+            canvasDrawTimes.push(drawEnd - drawStart);
+            video.requestVideoFrameCallback(countFrame);
         }
         if (video.requestVideoFrameCallback) {
-            video.requestVideoFrameCallback(gpuFrameCallback);
+            video.requestVideoFrameCallback(countFrame);
+            await new Promise(resolve => setTimeout(resolve, measureTime+100));
+            actualFps = frames / (measureTime/1000);
+        } else {
+            // fallback to requestAnimationFrame
+            let rafFrames = 0;
+            let rafPrev = null;
+            function rafFrame() {
+                if (performance.now() > endTime) return;
+                rafFrames++;
+                let now = performance.now();
+                if (rafPrev) frameTimes.push(now - rafPrev);
+                // Measure canvas draw time
+                const ctx = canvas.getContext('2d');
+                const drawStart = performance.now();
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                const drawEnd = performance.now();
+                canvasDrawTimes.push(drawEnd - drawStart);
+                rafPrev = now;
+                requestAnimationFrame(rafFrame);
+            }
+            requestAnimationFrame(rafFrame);
+            await new Promise(resolve => setTimeout(resolve, measureTime+100));
+            actualFps = rafFrames / (measureTime/1000);
         }
-
-        await new Promise(resolve => setTimeout(resolve, measureTime+100));
-        actualFps = frames / (measureTime/1000);
     } catch (e) {
         onsetLatency = 'Error';
         frameTimes = [];
-        gpuDrawTimes = [];
+        getUserMediaCpuTime = 'Error';
+        canvasDrawTimes = [];
         actualFps = 0;
     } finally {
         if (videoTrack) videoTrack.stop();
@@ -93,8 +109,9 @@ async function testCamera(resolution, fps) {
         resolution: `${resolution[0]}x${resolution[1]}`,
         fps,
         frameTime: frameTimes.length ? (frameTimes.reduce((a,b)=>a+b,0)/frameTimes.length).toFixed(1) : 'Error',
+        getUserMediaCpuTime: typeof getUserMediaCpuTime === 'number' ? getUserMediaCpuTime.toFixed(1) : getUserMediaCpuTime,
         onsetLatency: typeof onsetLatency === 'number' ? onsetLatency.toFixed(1) : onsetLatency,
-        gpuDrawTime: gpuDrawTimes.length ? (gpuDrawTimes.reduce((a,b)=>a+b,0)/gpuDrawTimes.length).toFixed(2) : 'N/A',
+        canvasDrawTime: canvasDrawTimes.length ? (canvasDrawTimes.reduce((a,b)=>a+b,0)/canvasDrawTimes.length).toFixed(3) : 'Error',
         actualFps: actualFps.toFixed(1)
     };
 }
@@ -104,9 +121,22 @@ async function runTests() {
     resultsTable.innerHTML = '';
     for (let res of resolutions) {
         for (let fps of frameRates) {
-            const result = await testCamera(res, fps);
+            let result;
+            try {
+                result = await testCamera(res, fps);
+            } catch (e) {
+                result = {
+                    resolution: `${res[0]}x${res[1]}`,
+                    fps,
+                    frameTime: 'Error',
+                    getUserMediaCpuTime: 'Error',
+                    onsetLatency: 'Error',
+                    canvasDrawTime: 'Error',
+                    actualFps: 'Error'
+                };
+            }
             const row = document.createElement('tr');
-            row.innerHTML = `<td>${result.resolution}</td><td>${result.fps}</td><td>${result.frameTime}</td><td>${result.onsetLatency}</td><td>${result.gpuDrawTime}</td><td>${result.actualFps}</td>`;
+            row.innerHTML = `<td>${result.resolution}</td><td>${result.fps}</td><td>${result.frameTime}</td><td>${result.getUserMediaCpuTime}</td><td>${result.onsetLatency}</td><td>${result.canvasDrawTime}</td><td>${result.actualFps}</td>`;
             resultsTable.appendChild(row);
         }
     }

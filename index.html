@@ -9,6 +9,7 @@
 <body>
     <h1>WebRTC Camera Resolution Test</h1>
     <video id="video" autoplay playsinline></video>
+    <canvas id="canvas" style="display:none;"></canvas>
     <button id="startTest">Start Test</button>
     <table id="resultsTable">
         <thead>
@@ -16,8 +17,9 @@
                 <th>Resolution</th>
                 <th>FPS</th>
                 <th>Frame Time (ms)</th>
+                <th>getUserMedia CPU Time (ms)</th>
                 <th>Onset Latency (ms)</th>
-                <th>GPU Draw Time (ms)</th>
+                <th>Canvas Draw Time (ms)</th>
                 <th>Actual FPS</th>
             </tr>
         </thead>
