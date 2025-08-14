@@ -165,9 +165,21 @@ async function runTests() {
                     actualFps: 'Error'
                 };
             }
+
+            // Play five participant.webm videos at matching resolution/fps and measure frame times
+            if (window.setupVideos && window.measureFrameTimes) {
+                window.setupVideos(res, fps);
+                let participantStats = await window.measureFrameTimes(5000);
+                result.participantAvgFrameTime = participantStats.avg;
+                result.participantStdDev = participantStats.sd;
+            } else {
+                result.participantAvgFrameTime = 'N/A';
+                result.participantStdDev = 'N/A';
+            }
+
             lastResults.push(result);
             const row = document.createElement('tr');
-            row.innerHTML = `<td>${result.resolution}</td><td>${result.fps}</td><td>${result.frameTime}</td><td>${result.getUserMediaCpuTime}</td><td>${result.onsetLatency}</td><td>${result.canvasDrawTime}</td><td>${result.canvasDrawStdDev}</td><td>${result.actualFps}</td>`;
+            row.innerHTML = `<td>${result.resolution}</td><td>${result.fps}</td><td>${result.frameTime}</td><td>${result.getUserMediaCpuTime}</td><td>${result.onsetLatency}</td><td>${result.canvasDrawTime}</td><td>${result.canvasDrawStdDev}</td><td>${result.actualFps}</td><td>${result.participantAvgFrameTime}</td><td>${result.participantStdDev}</td>`;
             resultsTable.appendChild(row);
             await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second pause
         }
