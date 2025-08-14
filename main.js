@@ -150,39 +150,44 @@ async function runTests() {
     // Full sequence
     for (let res of resolutions) {
         for (let fps of frameRates) {
-                if (window.stopVideos) window.stopVideos();
-                if (window.setupVideos) window.setupVideos(res, fps);
-                let participantStats = { avg: 'N/A', sd: 'N/A' };
-                let webcamResult;
-                try {
-                    // Start webcam and videos simultaneously
-                    const webcamPromise = testCamera(res, fps);
-                    if (window.measureFrameTimes) {
-                        participantStats = await window.measureFrameTimes(5000);
-                    }
-                    webcamResult = await webcamPromise;
-                } catch (e) {
-                    webcamResult = {
-                        resolution: `${res[0]}x${res[1]}`,
-                        fps,
-                        frameTime: 'Error',
-                        getUserMediaCpuTime: 'Error',
-                        onsetLatency: 'Error',
-                        canvasDrawTime: 'Error',
-                        canvasDrawStdDev: 'Error',
-                        actualFps: 'Error',
-                        participantAvgFrameTime: 'N/A',
-                        participantStdDev: 'N/A'
-                    };
+            // Show webcam and participant videos
+            video.style.display = '';
+            if (window.setupVideos) window.setupVideos(res, fps);
+
+            let participantStats = { avg: 'N/A', sd: 'N/A' };
+            let webcamResult;
+            try {
+                // Start webcam and videos simultaneously
+                const webcamPromise = testCamera(res, fps);
+                if (window.measureFrameTimes) {
+                    participantStats = await window.measureFrameTimes(5000);
                 }
-                webcamResult.participantAvgFrameTime = participantStats.avg;
-                webcamResult.participantStdDev = participantStats.sd;
-                lastResults.push(webcamResult);
-                const row = document.createElement('tr');
-                row.innerHTML = `<td>${webcamResult.resolution}</td><td>${webcamResult.fps}</td><td>${webcamResult.frameTime}</td><td>${webcamResult.getUserMediaCpuTime}</td><td>${webcamResult.onsetLatency}</td><td>${webcamResult.canvasDrawTime}</td><td>${webcamResult.canvasDrawStdDev}</td><td>${webcamResult.actualFps}</td><td>${webcamResult.participantAvgFrameTime}</td><td>${webcamResult.participantStdDev}</td>`;
-                resultsTable.appendChild(row);
-                if (window.stopVideos) window.stopVideos();
-                await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second pause
+                webcamResult = await webcamPromise;
+            } catch (e) {
+                webcamResult = {
+                    resolution: `${res[0]}x${res[1]}`,
+                    fps,
+                    frameTime: 'Error',
+                    getUserMediaCpuTime: 'Error',
+                    onsetLatency: 'Error',
+                    canvasDrawTime: 'Error',
+                    canvasDrawStdDev: 'Error',
+                    actualFps: 'Error',
+                    participantAvgFrameTime: 'N/A',
+                    participantStdDev: 'N/A'
+                };
+            }
+            webcamResult.participantAvgFrameTime = participantStats.avg;
+            webcamResult.participantStdDev = participantStats.sd;
+            lastResults.push(webcamResult);
+            const row = document.createElement('tr');
+            row.innerHTML = `<td>${webcamResult.resolution}</td><td>${webcamResult.fps}</td><td>${webcamResult.frameTime}</td><td>${webcamResult.getUserMediaCpuTime}</td><td>${webcamResult.onsetLatency}</td><td>${webcamResult.canvasDrawTime}</td><td>${webcamResult.canvasDrawStdDev}</td><td>${webcamResult.actualFps}</td><td>${webcamResult.participantAvgFrameTime}</td><td>${webcamResult.participantStdDev}</td>`;
+            resultsTable.appendChild(row);
+
+            // Hide webcam and participant videos after test
+            video.style.display = 'none';
+            if (window.stopVideos) window.stopVideos();
+            await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second pause
         }
     }
 function downloadTableAsCSV() {
