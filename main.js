@@ -150,38 +150,39 @@ async function runTests() {
     // Full sequence
     for (let res of resolutions) {
         for (let fps of frameRates) {
-            let result;
-            try {
-                result = await testCamera(res, fps);
-            } catch (e) {
-                result = {
-                    resolution: `${res[0]}x${res[1]}`,
-                    fps,
-                    frameTime: 'Error',
-                    getUserMediaCpuTime: 'Error',
-                    onsetLatency: 'Error',
-                    canvasDrawTime: 'Error',
-                    canvasDrawStdDev: 'Error',
-                    actualFps: 'Error'
-                };
-            }
-
-            // Play five participant.webm videos at matching resolution/fps and measure frame times
-            if (window.setupVideos && window.measureFrameTimes) {
-                window.setupVideos(res, fps);
-                let participantStats = await window.measureFrameTimes(5000);
-                result.participantAvgFrameTime = participantStats.avg;
-                result.participantStdDev = participantStats.sd;
-            } else {
-                result.participantAvgFrameTime = 'N/A';
-                result.participantStdDev = 'N/A';
-            }
-
-            lastResults.push(result);
-            const row = document.createElement('tr');
-            row.innerHTML = `<td>${result.resolution}</td><td>${result.fps}</td><td>${result.frameTime}</td><td>${result.getUserMediaCpuTime}</td><td>${result.onsetLatency}</td><td>${result.canvasDrawTime}</td><td>${result.canvasDrawStdDev}</td><td>${result.actualFps}</td><td>${result.participantAvgFrameTime}</td><td>${result.participantStdDev}</td>`;
-            resultsTable.appendChild(row);
-            await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second pause
+                if (window.stopVideos) window.stopVideos();
+                if (window.setupVideos) window.setupVideos(res, fps);
+                let participantStats = { avg: 'N/A', sd: 'N/A' };
+                let webcamResult;
+                try {
+                    // Start webcam and videos simultaneously
+                    const webcamPromise = testCamera(res, fps);
+                    if (window.measureFrameTimes) {
+                        participantStats = await window.measureFrameTimes(5000);
+                    }
+                    webcamResult = await webcamPromise;
+                } catch (e) {
+                    webcamResult = {
+                        resolution: `${res[0]}x${res[1]}`,
+                        fps,
+                        frameTime: 'Error',
+                        getUserMediaCpuTime: 'Error',
+                        onsetLatency: 'Error',
+                        canvasDrawTime: 'Error',
+                        canvasDrawStdDev: 'Error',
+                        actualFps: 'Error',
+                        participantAvgFrameTime: 'N/A',
+                        participantStdDev: 'N/A'
+                    };
+                }
+                webcamResult.participantAvgFrameTime = participantStats.avg;
+                webcamResult.participantStdDev = participantStats.sd;
+                lastResults.push(webcamResult);
+                const row = document.createElement('tr');
+                row.innerHTML = `<td>${webcamResult.resolution}</td><td>${webcamResult.fps}</td><td>${webcamResult.frameTime}</td><td>${webcamResult.getUserMediaCpuTime}</td><td>${webcamResult.onsetLatency}</td><td>${webcamResult.canvasDrawTime}</td><td>${webcamResult.canvasDrawStdDev}</td><td>${webcamResult.actualFps}</td><td>${webcamResult.participantAvgFrameTime}</td><td>${webcamResult.participantStdDev}</td>`;
+                resultsTable.appendChild(row);
+                if (window.stopVideos) window.stopVideos();
+                await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second pause
         }
     }
 function downloadTableAsCSV() {
