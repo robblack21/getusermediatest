@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Camera Resolution Test</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <h1>WebRTC Camera Resolution Test</h1>
+    <video id="video" autoplay playsinline></video>
+    <button id="startTest">Start Test</button>
+    <table id="resultsTable">
+        <thead>
+            <tr>
+                <th>Resolution</th>
+                <th>FPS</th>
+                <th>Frame Time (ms)</th>
+                <th>Onset Latency (ms)</th>
+                <th>Actual FPS</th>
+                <th>Dropped Frames</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+    <script src="main.js"></script>
+</body>
+</html>

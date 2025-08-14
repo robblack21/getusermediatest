@@ -1,0 +1,32 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    background: #f9f9f9;
+}
+h1 {
+    margin-bottom: 10px;
+}
+video {
+    display: block;
+    margin-bottom: 20px;
+    max-width: 100%;
+    background: #222;
+}
+table {
+    border-collapse: collapse;
+    width: 100%;
+    background: #fff;
+}
+th, td {
+    border: 1px solid #ccc;
+    padding: 8px;
+    text-align: center;
+}
+th {
+    background: #eee;
+}
+button {
+    padding: 10px 20px;
+    font-size: 16px;
+    margin-bottom: 20px;
+}
