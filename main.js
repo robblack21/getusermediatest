@@ -159,10 +159,11 @@ async function runTests() {
             try {
                 // Start webcam and videos simultaneously
                 const webcamPromise = testCamera(res, fps);
-                if (window.measureFrameTimes) {
-                    participantStats = await window.measureFrameTimes(5000);
-                }
-                webcamResult = await webcamPromise;
+                let participantPromise = window.measureFrameTimes ? window.measureFrameTimes(5000) : Promise.resolve({avg:'N/A',sd:'N/A'});
+                // Wait for both to finish
+                const [webcam, participant] = await Promise.all([webcamPromise, participantPromise]);
+                webcamResult = webcam;
+                participantStats = participant;
             } catch (e) {
                 webcamResult = {
                     resolution: `${res[0]}x${res[1]}`,
@@ -185,6 +186,7 @@ async function runTests() {
             resultsTable.appendChild(row);
 
             // Hide webcam and participant videos after test
+            video.srcObject = null;
             video.style.display = 'none';
             if (window.stopVideos) window.stopVideos();
             await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second pause
