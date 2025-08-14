@@ -46,6 +46,7 @@ async function testCamera(resolution, fps) {
             }
         };
         // Take 5 samples for getUserMedia CPU time
+        getUserMediaCpuTimes = [];
         for (let i = 0; i < 5; i++) {
             const gUMStart = performance.now();
             let s = await navigator.mediaDevices.getUserMedia(constraints);
@@ -53,14 +54,14 @@ async function testCamera(resolution, fps) {
             s.getTracks().forEach(t => t.stop());
             await new Promise(resolve => setTimeout(resolve, 100));
         }
-        // Use the last stream for video
+        // Use the last stream for video and measure onset latency for just this one
+        let onsetStart = performance.now();
         stream = await navigator.mediaDevices.getUserMedia(constraints);
         video.srcObject = stream;
         videoTrack = stream.getVideoTracks()[0];
-        // Wait for video to show new frame
         await new Promise(resolve => {
             const handler = () => {
-                onsetLatency = performance.now() - getUserMediaCpuTimes[getUserMediaCpuTimes.length-1];
+                onsetLatency = performance.now() - onsetStart;
                 video.removeEventListener('playing', handler);
                 resolve();
             };
