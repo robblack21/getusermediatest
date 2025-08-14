@@ -1,22 +1,26 @@
 const resolutions = [
-    [192, 108], [320, 180], [640, 360], [1280, 720], [1920, 1080]
+    [192, 108],
+    [320, 180],
+    [384, 216],
+    [512, 288],
+    [640, 360],
+    [1024, 576],
+    [1280, 720],
+    [1920, 1080]
 ];
 const frameRates = [15, 20, 30];
 const video = document.getElementById('video');
 const startBtn = document.getElementById('startTest');
 const resultsTable = document.getElementById('resultsTable').querySelector('tbody');
 
+
 async function testCamera(resolution, fps) {
     let onsetLatency = null;
     let frameTimes = [];
-    let droppedFrames = 0;
+    let gpuDrawTimes = [];
     let actualFps = 0;
-    let lastFrameTime = null;
-    let frameCount = 0;
-    let startTime = performance.now();
     let videoTrack;
     let stream;
-    let frameTimestamps = [];
 
     try {
         const constraints = {
@@ -39,34 +43,48 @@ async function testCamera(resolution, fps) {
             };
             video.addEventListener('playing', handler);
         });
-        // Measure frame time for 2 seconds
+        // Measure frame time and GPU draw time for 2 seconds
         let prev = null;
         let frames = 0;
-        let dropped = 0;
-        let timestamps = [];
         const measureTime = 2000;
         const endTime = performance.now() + measureTime;
+        let gpuPrev = null;
         function onFrame() {
             if (performance.now() > endTime) return;
-            timestamps.push(performance.now());
+            let now = performance.now();
             frames++;
             if (prev) {
-                let dt = timestamps[timestamps.length-1] - prev;
+                let dt = now - prev;
                 frameTimes.push(dt);
-                if (dt > (1000/fps)*1.5) dropped++;
             }
-            prev = timestamps[timestamps.length-1];
+            prev = now;
             requestAnimationFrame(onFrame);
         }
         requestAnimationFrame(onFrame);
+
+        // GPU draw time using requestVideoFrameCallback
+        let gpuFrames = 0;
+        function gpuFrameCallback(now, metadata) {
+            if (gpuFrames > 0 && gpuPrev) {
+                gpuDrawTimes.push(now - gpuPrev);
+            }
+            gpuPrev = now;
+            gpuFrames++;
+            if (performance.now() < endTime) {
+                video.requestVideoFrameCallback(gpuFrameCallback);
+            }
+        }
+        if (video.requestVideoFrameCallback) {
+            video.requestVideoFrameCallback(gpuFrameCallback);
+        }
+
         await new Promise(resolve => setTimeout(resolve, measureTime+100));
         actualFps = frames / (measureTime/1000);
-        droppedFrames = dropped;
     } catch (e) {
         onsetLatency = 'Error';
         frameTimes = [];
+        gpuDrawTimes = [];
         actualFps = 0;
-        droppedFrames = 'Error';
     } finally {
         if (videoTrack) videoTrack.stop();
         if (stream) stream.getTracks().forEach(t => t.stop());
@@ -76,8 +94,8 @@ async function testCamera(resolution, fps) {
         fps,
         frameTime: frameTimes.length ? (frameTimes.reduce((a,b)=>a+b,0)/frameTimes.length).toFixed(1) : 'Error',
         onsetLatency: typeof onsetLatency === 'number' ? onsetLatency.toFixed(1) : onsetLatency,
-        actualFps: actualFps.toFixed(1),
-        droppedFrames
+        gpuDrawTime: gpuDrawTimes.length ? (gpuDrawTimes.reduce((a,b)=>a+b,0)/gpuDrawTimes.length).toFixed(2) : 'N/A',
+        actualFps: actualFps.toFixed(1)
     };
 }
 
@@ -88,7 +106,7 @@ async function runTests() {
         for (let fps of frameRates) {
             const result = await testCamera(res, fps);
             const row = document.createElement('tr');
-            row.innerHTML = `<td>${result.resolution}</td><td>${result.fps}</td><td>${result.frameTime}</td><td>${result.onsetLatency}</td><td>${result.actualFps}</td><td>${result.droppedFrames}</td>`;
+            row.innerHTML = `<td>${result.resolution}</td><td>${result.fps}</td><td>${result.frameTime}</td><td>${result.onsetLatency}</td><td>${result.gpuDrawTime}</td><td>${result.actualFps}</td>`;
             resultsTable.appendChild(row);
         }
     }
