@@ -12,7 +12,9 @@ const frameRates = [15, 20, 30];
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
 const startBtn = document.getElementById('startTest');
+const downloadBtn = document.getElementById('downloadCsv');
 const resultsTable = document.getElementById('resultsTable').querySelector('tbody');
+let lastResults = [];
 
 
 async function testCamera(resolution, fps) {
@@ -119,6 +121,7 @@ async function testCamera(resolution, fps) {
 async function runTests() {
     startBtn.disabled = true;
     resultsTable.innerHTML = '';
+    lastResults = [];
     for (let res of resolutions) {
         for (let fps of frameRates) {
             let result;
@@ -135,11 +138,30 @@ async function runTests() {
                     actualFps: 'Error'
                 };
             }
+            lastResults.push(result);
             const row = document.createElement('tr');
             row.innerHTML = `<td>${result.resolution}</td><td>${result.fps}</td><td>${result.frameTime}</td><td>${result.getUserMediaCpuTime}</td><td>${result.onsetLatency}</td><td>${result.canvasDrawTime}</td><td>${result.actualFps}</td>`;
             resultsTable.appendChild(row);
         }
     }
+function downloadTableAsCSV() {
+    if (!lastResults.length) return;
+    const headers = ['Resolution','FPS','Frame Time (ms)','getUserMedia CPU Time (ms)','Onset Latency (ms)','Canvas Draw Time (ms)','Actual FPS'];
+    const rows = lastResults.map(r => [r.resolution, r.fps, r.frameTime, r.getUserMediaCpuTime, r.onsetLatency, r.canvasDrawTime, r.actualFps]);
+    let csvContent = headers.join(',') + '\n';
+    csvContent += rows.map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'camera_test_results.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+downloadBtn.addEventListener('click', downloadTableAsCSV);
     startBtn.disabled = false;
 }
 
