@@ -122,6 +122,11 @@ async function runTests() {
     startBtn.disabled = true;
     resultsTable.innerHTML = '';
     lastResults = [];
+    // Warm-up run (disposable, not recorded)
+    try {
+        await testCamera(resolutions[0], frameRates[0]);
+    } catch (e) {}
+    // Full sequence
     for (let res of resolutions) {
         for (let fps of frameRates) {
             let result;
