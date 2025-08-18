@@ -3,24 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Canvas createImageBitmap Performance Test</title>
-  <style>
-    canvas { width: 640px; height: 360px; border: 1px solid black; }
-    table { margin-top: 16px; border-collapse: collapse; }
-    th, td { border: 1px solid #ccc; padding: 4px 8px; }
-    th { background: #eee; }
-  </style>
+  <title>WebRTC Camera Resolution Test</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <button id="startTest">Start createImageBitmap Test</button>
+  <h1>WebRTC Camera Resolution Test</h1>
+  <video id="video" autoplay playsinline style="display:none;"></video>
   <canvas id="canvas" width="640" height="360"></canvas>
+  <button id="startTest">Start Test</button>
+  <button id="downloadCsv">Download CSV</button>
   <table id="resultsTable">
     <thead>
       <tr>
         <th>Resolution</th>
         <th>FPS</th>
-        <th>Avg Draw Time (ms)</th>
-        <th>Draw StdDev (ms)</th>
+        <th>Frame Time (ms)</th>
+        <th>getUserMedia CPU Time (ms)</th>
+        <th>Onset Latency (ms)</th>
+        <th>Canvas Draw Time (ms)</th>
+        <th>Canvas Draw StdDev (ms)</th>
+        <th>Actual FPS</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -35,6 +37,8 @@
     const ctx = canvas.getContext('2d');
     const resultsTable = document.getElementById('resultsTable').querySelector('tbody');
     const startBtn = document.getElementById('startTest');
+    const downloadBtn = document.getElementById('downloadCsv');
+    let lastResults = [];
 
     function stddev(arr) {
       if (!arr.length) return 'Error';
@@ -48,53 +52,75 @@
       canvas.width = resolution[0];
       canvas.height = resolution[1];
       let drawTimes = [];
-      let frameCount = 0;
-      let stop = false;
+      let frameTimes = [];
+      let onsetLatency = 'N/A';
+      let actualFps = 0;
+      let getUserMediaCpuTime = 'N/A';
       let stream, video;
       try {
+        const gUMStart = performance.now();
         stream = await navigator.mediaDevices.getUserMedia({
           video: { width: resolution[0], height: resolution[1], frameRate: { ideal: fps } }
         });
+        getUserMediaCpuTime = (performance.now() - gUMStart).toFixed(1);
         video = document.createElement('video');
         video.srcObject = stream;
         video.play();
+        const onsetStart = performance.now();
         await new Promise(resolve => video.onplaying = resolve);
+        onsetLatency = (performance.now() - onsetStart).toFixed(1);
         const startTime = performance.now();
         const endTime = startTime + 5000;
+        let frames = 0;
+        let prev = null;
         async function drawFrame() {
-          if (performance.now() > endTime || stop) return;
+          if (performance.now() > endTime) return;
           ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
           const t0 = performance.now();
           const bitmap = await createImageBitmap(canvas);
           ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
           const t1 = performance.now();
           drawTimes.push(t1 - t0);
-          bitmap.close();
-          frameCount++;
+          frames++;
+          if (prev) frameTimes.push(t1 - prev);
+          prev = t1;
           requestAnimationFrame(drawFrame);
         }
         drawFrame();
         await new Promise(resolve => setTimeout(resolve, 5100));
-        stop = true;
+        actualFps = frames / 5;
         video.srcObject.getTracks().forEach(t => t.stop());
         video.remove();
       } catch (e) {
-        return { avg: 'Error', stddev: 'Error' };
+        return {
+          frameTime: 'Error',
+          getUserMediaCpuTime: 'Error',
+          onsetLatency: 'Error',
+          canvasDrawTime: 'Error',
+          canvasDrawStdDev: 'Error',
+          actualFps: 'Error'
+        };
       }
       return {
-        avg: drawTimes.length ? (drawTimes.reduce((a,b)=>a+b,0)/drawTimes.length).toFixed(3) : 'Error',
-        stddev: drawTimes.length ? stddev(drawTimes) : 'Error'
+        frameTime: frameTimes.length ? (frameTimes.reduce((a,b)=>a+b,0)/frameTimes.length).toFixed(1) : 'Error',
+        getUserMediaCpuTime,
+        onsetLatency,
+        canvasDrawTime: drawTimes.length ? (drawTimes.reduce((a,b)=>a+b,0)/drawTimes.length).toFixed(3) : 'Error',
+        canvasDrawStdDev: drawTimes.length ? stddev(drawTimes) : 'Error',
+        actualFps: actualFps.toFixed(1)
       };
     }
 
     async function runTests() {
       startBtn.disabled = true;
       resultsTable.innerHTML = '';
+      lastResults = [];
       for (let res of resolutions) {
         for (let fps of frameRates) {
           const result = await testCreateImageBitmap(res, fps);
+          lastResults.push({ resolution: `${res[0]}x${res[1]}`, fps, ...result });
           const row = document.createElement('tr');
-          row.innerHTML = `<td>${res[0]}x${res[1]}</td><td>${fps}</td><td>${result.avg}</td><td>${result.stddev}</td>`;
+          row.innerHTML = `<td>${res[0]}x${res[1]}</td><td>${fps}</td><td>${result.frameTime}</td><td>${result.getUserMediaCpuTime}</td><td>${result.onsetLatency}</td><td>${result.canvasDrawTime}</td><td>${result.canvasDrawStdDev}</td><td>${result.actualFps}</td>`;
           resultsTable.appendChild(row);
           await new Promise(resolve => setTimeout(resolve, 500));
         }
@@ -102,6 +128,24 @@
       startBtn.disabled = false;
     }
 
+    function downloadTableAsCSV() {
+      if (!lastResults.length) return;
+      const headers = ['Resolution','FPS','Frame Time (ms)','getUserMedia CPU Time (ms)','Onset Latency (ms)','Canvas Draw Time (ms)','Canvas Draw StdDev (ms)','Actual FPS'];
+      const rows = lastResults.map(r => [r.resolution, r.fps, r.frameTime, r.getUserMediaCpuTime, r.onsetLatency, r.canvasDrawTime, r.canvasDrawStdDev, r.actualFps]);
+      let csvContent = headers.join(',') + '\n';
+      csvContent += rows.map(row => row.join(',')).join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'canvas_createimagebitmap_results.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    downloadBtn.addEventListener('click', downloadTableAsCSV);
     startBtn.addEventListener('click', runTests);
   </script>
 </body>
