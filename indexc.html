@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>WebCodecs Webcam Performance Test</title>
+  <style>
+    canvas { width: 640px; height: 360px; border: 1px solid black; }
+    table { margin-top: 16px; border-collapse: collapse; }
+    th, td { border: 1px solid #ccc; padding: 4px 8px; }
+    th { background: #eee; }
+  </style>
+</head>
+<body>
+  <button id="startTest">Start WebCodecs Test</button>
+  <canvas id="canvas" width="640" height="360"></canvas>
+  <table id="resultsTable">
+    <thead>
+      <tr>
+        <th>Resolution</th>
+        <th>FPS</th>
+        <th>Avg Draw Time (ms)</th>
+        <th>Draw StdDev (ms)</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+  <script>
+    const resolutions = [
+      [192, 108], [256, 144], [320, 180], [384, 216], [448, 252], [512, 288],
+      [640, 360], [768, 432], [896, 504], [1024, 576], [1280, 720], [1920, 1080]
+    ];
+    const frameRates = [15, 20, 30];
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const resultsTable = document.getElementById('resultsTable').querySelector('tbody');
+    const startBtn = document.getElementById('startTest');
+
+    function stddev(arr) {
+      if (!arr.length) return 'Error';
+      const mean = arr.reduce((a,b)=>a+b,0)/arr.length;
+      const sqDiffs = arr.map(v => Math.pow(v-mean,2));
+      const avgSqDiff = sqDiffs.reduce((a,b)=>a+b,0)/arr.length;
+      return Math.sqrt(avgSqDiff).toFixed(3);
+    }
+
+    async function testWebCodecs(resolution, fps) {
+      canvas.width = resolution[0];
+      canvas.height = resolution[1];
+      let drawTimes = [];
+      let frameCount = 0;
+      let stop = false;
+      let stream, reader;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: resolution[0], height: resolution[1], frameRate: { ideal: fps } }
+        });
+        const videoTrack = stream.getVideoTracks()[0];
+        const processor = new MediaStreamTrackProcessor({ track: videoTrack });
+        reader = processor.readable.getReader();
+        const startTime = performance.now();
+        const endTime = startTime + 5000;
+        async function drawFrame() {
+          if (performance.now() > endTime || stop) return;
+          const { value: videoFrame, done } = await reader.read();
+          if (done || !videoFrame) return;
+          try {
+            const t0 = performance.now();
+            const bitmap = await createImageBitmap(videoFrame);
+            ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+            bitmap.close();
+            const t1 = performance.now();
+            drawTimes.push(t1 - t0);
+            frameCount++;
+          } catch (err) {
+            console.error('Error processing frame:', err);
+          } finally {
+            videoFrame.close();
+          }
+          requestAnimationFrame(drawFrame);
+        }
+        drawFrame();
+        await new Promise(resolve => setTimeout(resolve, 5100));
+        stop = true;
+        reader.releaseLock();
+        videoTrack.stop();
+        stream.getTracks().forEach(t => t.stop());
+      } catch (e) {
+        return { avg: 'Error', stddev: 'Error' };
+      }
+      return {
+        avg: drawTimes.length ? (drawTimes.reduce((a,b)=>a+b,0)/drawTimes.length).toFixed(3) : 'Error',
+        stddev: drawTimes.length ? stddev(drawTimes) : 'Error'
+      };
+    }
+
+    async function runTests() {
+      startBtn.disabled = true;
+      resultsTable.innerHTML = '';
+      for (let res of resolutions) {
+        for (let fps of frameRates) {
+          const result = await testWebCodecs(res, fps);
+          const row = document.createElement('tr');
+          row.innerHTML = `<td>${res[0]}x${res[1]}</td><td>${fps}</td><td>${result.avg}</td><td>${result.stddev}</td>`;
+          resultsTable.appendChild(row);
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+      startBtn.disabled = false;
+    }
+
+    startBtn.addEventListener('click', runTests);
+  </script>
+</body>
+</html>
