@@ -1,0 +1,150 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>WebCodecs VideoFrame – Camera (no <video>)</title>
+<style>
+  body { font: 14px/1.45 system-ui, sans-serif; margin: 20px; }
+  .row { margin: 8px 0; display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  canvas { width: 320px; height: 180px; background:#111; }
+  .stat { white-space:pre; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+</style>
+
+<h1>WebCodecs: Camera → VideoFrame (no &lt;video&gt;)</h1>
+
+<div class="row">
+  <button id="start">Start camera</button>
+  <button id="stop" disabled>Stop</button>
+  <label><input type="checkbox" id="copyCanvas"> Also copy each frame to canvas (drawImage)</label>
+  <label>Target: 
+    <select id="res">
+      <option value="1280x720">1280×720</option>
+      <option value="1920x1080">1920×1080</option>
+      <option value="640x360">640×360</option>
+    </select>
+  </label>
+  <label>FPS:
+    <select id="fps">
+      <option>30</option>
+      <option>24</option>
+      <option>15</option>
+    </select>
+  </label>
+</div>
+
+<div class="row">
+  <canvas id="cnv" width="1280" height="720"></canvas>
+</div>
+
+<div class="row stat" id="stats">Idle.</div>
+
+<script>
+const startBtn = document.getElementById('start');
+const stopBtn  = document.getElementById('stop');
+const copyCB   = document.getElementById('copyCanvas');
+const resSel   = document.getElementById('res');
+const fpsSel   = document.getElementById('fps');
+const canvas   = document.getElementById('cnv');
+const ctx      = canvas.getContext('2d', { willReadFrequently: true });
+const statsEl  = document.getElementById('stats');
+
+let stream, reader, running = false;
+let frames = 0, prevTs = 0;
+let copyTimes = [], interTimes = [];
+
+function format(msArr){
+  if (!msArr.length) return 'n/a';
+  const avg = msArr.reduce((a,b)=>a+b,0)/msArr.length;
+  const sd  = Math.sqrt(msArr.reduce((a,b)=>a+(b-avg)*(b-avg),0)/msArr.length);
+  return `${avg.toFixed(3)} ms (±${sd.toFixed(3)})`;
+}
+
+function updateStats() {
+  const fps = interTimes.length ? (1000 / (interTimes.reduce((a,b)=>a+b,0)/interTimes.length)).toFixed(1) : 'n/a';
+  statsEl.textContent =
+`frames: ${frames}
+inter-frame: ${format(interTimes)}  (≈ ${fps} fps)
+copy drawImage(): ${format(copyTimes)}
+canvas: ${canvas.width}×${canvas.height}  copies: ${copyCB.checked ? 'on' : 'off'}`;
+}
+
+function parseWH(v){ const [w,h] = v.split('x').map(Number); return {w,h}; }
+
+async function start() {
+  if (!('MediaStreamTrackProcessor' in window)) {
+    statsEl.textContent = 'This browser lacks MediaStreamTrackProcessor/WebCodecs.';
+    return;
+  }
+  startBtn.disabled = true;
+  const {w,h} = parseWH(resSel.value);
+  const fps = Number(fpsSel.value);
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width:{ideal:w}, height:{ideal:h}, frameRate:{ideal:fps}, facingMode:'user' },
+      audio: false
+    });
+  } catch (e) {
+    statsEl.textContent = 'getUserMedia error: ' + e.message;
+    startBtn.disabled = false;
+    return;
+  }
+
+  const track = stream.getVideoTracks()[0];
+  const processor = new MediaStreamTrackProcessor({ track });
+  reader = processor.readable.getReader();
+
+  // Size canvas to actual track settings to avoid implicit resizes/copies.
+  const s = track.getSettings();
+  canvas.width  = s.width  || w;
+  canvas.height = s.height || h;
+
+  running = true;
+  frames = 0; prevTs = 0; copyTimes = []; interTimes = [];
+  stopBtn.disabled = false;
+  statsEl.textContent = 'Running… (no <video> element involved)';
+
+  (async function loop(){
+    while (running) {
+      const { value: frame, done } = await reader.read();
+      if (done || !running) break;
+      try {
+        frames++;
+        // Use frame timestamp if present; else fallback to performance.now()
+        const ts = (typeof frame.timestamp === 'number') ? frame.timestamp / 1000 : performance.now();
+        if (prevTs) interTimes.push(ts - prevTs);
+        prevTs = ts;
+
+        if (copyCB.checked) {
+          const t0 = performance.now();
+          // NOTE: drawImage on VideoFrame is supported in Canvas2D; for WebGL/WebGPU, upload planes directly.
+          ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+          const t1 = performance.now();
+          copyTimes.push(t1 - t0);
+          if (copyTimes.length > 240) copyTimes.shift();
+        }
+
+        if (interTimes.length > 240) interTimes.shift();
+        if ((frames & 15) === 0) updateStats(); // update every ~16 frames
+      } finally {
+        frame.close(); // release decoder/producer buffers
+      }
+    }
+  })().catch(err => {
+    statsEl.textContent = 'Reader loop error: ' + err.message;
+  });
+}
+
+function stop() {
+  running = false;
+  stopBtn.disabled = true;
+  startBtn.disabled = false;
+  try { reader && reader.releaseLock(); } catch {}
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+  updateStats();
+}
+
+startBtn.addEventListener('click', start);
+stopBtn.addEventListener('click', stop);
+</script>
