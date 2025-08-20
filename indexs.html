@@ -1,0 +1,105 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Decode-without-draw Proof</title>
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 20px; }
+  .row { margin: 8px 0; }
+  video { width: 320px; height: 180px; background:#000; }
+  canvas { width: 320px; height: 180px; background:#111; }
+</style>
+
+<h1>Decode happens without draw()</h1>
+
+<div class="row">
+  <button id="start">Start camera</button>
+  <button id="stop" disabled>Stop</button>
+  <label style="margin-left:12px;">
+    <input type="checkbox" id="doCopies" />
+    Also copy each frame to canvas (drawImage)
+  </label>
+</div>
+
+<div class="row">
+  <video id="vid" autoplay playsinline muted hidden></video>
+  <canvas id="cnv"></canvas>
+</div>
+
+<div class="row">
+  <pre id="log"></pre>
+</div>
+
+<script>
+const vid = document.getElementById('vid');
+const cnv = document.getElementById('cnv');
+const ctx = cnv.getContext('2d', { willReadFrequently: true });
+const log = document.getElementById('log');
+const startBtn = document.getElementById('start');
+const stopBtn = document.getElementById('stop');
+const doCopies = document.getElementById('doCopies');
+
+let stream, running = false, frames = 0, lastT = 0, copyTimes = [];
+
+function append(s){ log.textContent = s; }
+
+async function start() {
+  startBtn.disabled = true;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+      audio: false
+    });
+    vid.srcObject = stream;
+    await vid.play(); // <-- decoding starts now
+
+    running = true; frames = 0; lastT = 0; copyTimes = [];
+    requestVideoFrameCallback(loop);
+
+    stopBtn.disabled = false;
+    append('Running… decoding via <video> even if we never draw.\nCheck DevTools ▸ Media or Chrome Task Manager.');
+  } catch (e) {
+    append('Error: ' + e.message);
+    startBtn.disabled = false;
+  }
+}
+
+function stop() {
+  running = false;
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+  }
+  stopBtn.disabled = true;
+  startBtn.disabled = false;
+}
+
+function loop(now, meta) {
+  if (!running) return;
+  frames++;
+  // Show decode cadence and basic stats
+  const dt = lastT ? (now - lastT) : 0;
+  lastT = now;
+
+  // Optional extra copy cost (what createImageBitmap/drawImage paths add on top of decode)
+  if (doCopies.checked) {
+    const t0 = performance.now();
+    ctx.drawImage(vid, 0, 0, cnv.width, cnv.height);
+    copyTimes.push(performance.now() - t0);
+    if (copyTimes.length > 180) copyTimes.shift();
+  }
+
+  // Playback quality exposes dropped frames that never hit JS
+  const q = vid.getVideoPlaybackQuality?.();
+  const avgCopy = copyTimes.length ? (copyTimes.reduce((a,b)=>a+b,0)/copyTimes.length).toFixed(3) : 'n/a';
+  append(
+    `frames seen: ${frames}\n` +
+    `last frame dt (ms): ${dt.toFixed(2)}\n` +
+    `copy avg (ms): ${avgCopy}\n` +
+    `decoded frames: ${q?.totalVideoFrames ?? 'n/a'}  dropped: ${q?.droppedVideoFrames ?? 'n/a'}`
+  );
+
+  vid.requestVideoFrameCallback(loop);
+}
+
+startBtn.addEventListener('click', start);
+stopBtn.addEventListener('click', stop);
+</script>
