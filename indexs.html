@@ -51,8 +51,8 @@ async function start() {
     vid.srcObject = stream;
     await vid.play(); // <-- decoding starts now
 
-    running = true; frames = 0; lastT = 0; copyTimes = [];
-    requestVideoFrameCallback(loop);
+  running = true; frames = 0; lastT = 0; copyTimes = [];
+  vid.requestVideoFrameCallback(loop);
 
     stopBtn.disabled = false;
     append('Running… decoding via <video> even if we never draw.\nCheck DevTools ▸ Media or Chrome Task Manager.');
@@ -97,7 +97,11 @@ function loop(now, meta) {
     `decoded frames: ${q?.totalVideoFrames ?? 'n/a'}  dropped: ${q?.droppedVideoFrames ?? 'n/a'}`
   );
 
-  vid.requestVideoFrameCallback(loop);
+  if (typeof vid.requestVideoFrameCallback === 'function') {
+    vid.requestVideoFrameCallback(loop);
+  } else {
+    requestAnimationFrame(function() { loop(performance.now(), {}); });
+  }
 }
 
 startBtn.addEventListener('click', start);
