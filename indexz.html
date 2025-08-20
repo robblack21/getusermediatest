@@ -99,144 +99,139 @@
                         if (!msArr.length) return 'n/a';
                         const avg = msArr.reduce((a,b)=>a+b,0)/msArr.length;
                         const sd  = Math.sqrt(msArr.reduce((a,b)=>a+(b-avg)*(b-avg),0)/msArr.length);
-                        return `${avg.toFixed(3)} ms (±${sd.toFixed(3)})`;
-                    }
+                            <h1>Video Element + createImageBitmap (toggle)</h1>
+                            <div class="row">
+                                <button id="start">Start camera</button>
+                                <button id="stop" disabled>Stop</button>
+                                <label><input type="checkbox" id="useBitmap"> Use createImageBitmap for copy</label>
+                                <label>Target: 
+                                    <select id="res">
+                                        <option value="1280x720">1280×720</option>
+                                        <option value="1920x1080">1920×1080</option>
+                                        <option value="640x360">640×360</option>
+                                    </select>
+                                </label>
+                                <label>FPS:
+                                    <select id="fps">
+                                        <option>30</option>
+                                        <option>24</option>
+                                        <option>15</option>
+                                    </select>
+                                </label>
+                            </div>
+                            <div class="row">
+                                <video id="vid" autoplay playsinline muted></video>
+                                <canvas id="cnv" width="1280" height="720"></canvas>
+                            </div>
+                            <div class="row stat" id="stats">Idle.</div>
+                            <script>
+                            const startBtn = document.getElementById('start');
+                            const stopBtn  = document.getElementById('stop');
+                            const useBitmapCB = document.getElementById('useBitmap');
+                            const resSel   = document.getElementById('res');
+                            const fpsSel   = document.getElementById('fps');
+                            const vid      = document.getElementById('vid');
+                            const canvas   = document.getElementById('cnv');
+                            const ctx      = canvas.getContext('2d', { willReadFrequently: true });
+                            const statsEl  = document.getElementById('stats');
 
-                    function updateStats() {
-                        const fps = interTimes.length ? (1000 / (interTimes.reduce((a,b)=>a+b,0)/interTimes.length)).toFixed(1) : 'n/a';
-                        statsEl.textContent =
-            `frames: ${frames}
-                const fps = interTimes.length ? (1000 / (interTimes.reduce((a,b)=>a+b,0)/interTimes.length)).toFixed(1) : 'n/a';
-                statsEl.textContent =
-    `frames: ${frames}
-                    }
+                            let stream, running = false;
+                            let frames = 0, prevTs = 0;
+                            let copyTimes = [], interTimes = [];
 
-                    function parseWH(v){ const [w,h] = v.split('x').map(Number); return {w,h}; }
+                            function format(msArr){
+                                if (!msArr.length) return 'n/a';
+                                const avg = msArr.reduce((a,b)=>a+b,0)/msArr.length;
+                                const sd  = Math.sqrt(msArr.reduce((a,b)=>a+(b-avg)*(b-avg),0)/msArr.length);
+                                return `${avg.toFixed(3)} ms (±${sd.toFixed(3)})`;
+                            }
 
-                    function start() {
-                        startBtn.disabled = true;
-                        const {w,h} = parseWH(resSel.value);
-                        const fps = Number(fpsSel.value);
-
-                        navigator.mediaDevices.getUserMedia({
-                            video: { width:{ideal:w}, height:{ideal:h}, frameRate:{ideal:fps}, facingMode:'user' },
-                            audio: false
-                        }).then(streamObj => {
-                            stream = streamObj;
-                            vid.srcObject = stream;
-                            vid.onplaying = () => {
-                                // Size canvas to actual track settings to avoid implicit resizes/copies.
-                                const s = vid.videoWidth && vid.videoHeight ? {width:vid.videoWidth, height:vid.videoHeight} : {width:w, height:h};
-                                canvas.width  = s.width;
-                                canvas.height = s.height;
-                                running = true;
-                                frames = 0; prevTs = 0; copyTimes = []; interTimes = [];
-                                stopBtn.disabled = false;
-                                statsEl.textContent = 'Running…';
-                                loop();
-                            };
-                            vid.play();
-                        }).catch(e => {
-                            statsEl.textContent = 'getUserMedia error: ' + e.message;
-                            startBtn.disabled = false;
-                        });
-                    }
-
-                    function stop() {
-                        running = false;
-                        stopBtn.disabled = true;
-                        startBtn.disabled = false;
-                        if (stream) {
-                            stream.getTracks().forEach(t => t.stop());
-                            stream = null;
-                        }
-                        updateStats();
-                    }
-
-                    function loop() {
-                        if (!running) return;
-                        frames++;
-                        const ts = performance.now();
-                        if (prevTs) interTimes.push(ts - prevTs);
-                        prevTs = ts;
-
-                        if (useBitmapCB.checked) {
-                            const t0 = performance.now();
-                            createImageBitmap(vid).then(bitmap => {
-                                ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-                                bitmap.close();
-                                const t1 = performance.now();
-                                copyTimes.push(t1 - t0);
-                                if (copyTimes.length > 240) copyTimes.shift();
-                                if (interTimes.length > 240) interTimes.shift();
-                                if ((frames & 15) === 0) updateStats();
-                                requestAnimationFrame(loop);
-                            });
-                        } else {
-                            const t0 = performance.now();
-                            ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
-                            const t1 = performance.now();
-                            copyTimes.push(t1 - t0);
-                            if (copyTimes.length > 240) copyTimes.shift();
-                            if (interTimes.length > 240) interTimes.shift();
-                            if ((frames & 15) === 0) updateStats();
-                            requestAnimationFrame(loop);
-                        }
-                    }
-
-                    startBtn.addEventListener('click', start);
-                    stopBtn.addEventListener('click', stop);
-                    </script>
-    inter-frame: ${format(interTimes)}  (≈ ${fps} fps)
-    copy: ${useBitmapCB.checked ? 'createImageBitmap' : 'drawImage'}: ${format(copyTimes)}
-    canvas: ${canvas.width}×${canvas.height}`;
-            }
-
-            function parseWH(v){ const [w,h] = v.split('x').map(Number); return {w,h}; }
-
-            function start() {
-                startBtn.disabled = true;
-                const {w,h} = parseWH(resSel.value);
-                const fps = Number(fpsSel.value);
-
-                navigator.mediaDevices.getUserMedia({
-                    video: { width:{ideal:w}, height:{ideal:h}, frameRate:{ideal:fps}, facingMode:'user' },
-                    audio: false
-                }).then(streamObj => {
-                    stream = streamObj;
-                    vid.srcObject = stream;
-                    vid.onplaying = () => {
-                        // Size canvas to actual track settings to avoid implicit resizes/copies.
-                        const s = vid.videoWidth && vid.videoHeight ? {width:vid.videoWidth, height:vid.videoHeight} : {width:w, height:h};
-                        canvas.width  = s.width;
-                        canvas.height = s.height;
-                        running = true;
-                        frames = 0; prevTs = 0; copyTimes = []; interTimes = [];
-                        stopBtn.disabled = false;
-                        statsEl.textContent = 'Running…';
-                        loop();
-                    };
-                    vid.play();
-                }).catch(e => {
-                    statsEl.textContent = 'getUserMedia error: ' + e.message;
-                    startBtn.disabled = false;
-                });
-            }
-
-            function stop() {
-                running = false;
-                stopBtn.disabled = true;
-                startBtn.disabled = false;
-                if (stream) {
-                    stream.getTracks().forEach(t => t.stop());
-                    stream = null;
-                }
-                updateStats();
-            }
-
+                            function updateStats() {
+                                const fps = interTimes.length ? (1000 / (interTimes.reduce((a,b)=>a+b,0)/interTimes.length)).toFixed(1) : 'n/a';
+                                statsEl.textContent =
+                    `frames: ${frames}
             function loop() {
                 if (!running) return;
                 frames++;
+                            }
+
+                            function parseWH(v){ const [w,h] = v.split('x').map(Number); return {w,h}; }
+
+                            function start() {
+                                startBtn.disabled = true;
+                                stopBtn.disabled = false;
+                                const {w,h} = parseWH(resSel.value);
+                                const fps = Number(fpsSel.value);
+
+                                navigator.mediaDevices.getUserMedia({
+                                    video: { width:{ideal:w}, height:{ideal:h}, frameRate:{ideal:fps}, facingMode:'user' },
+                                    audio: false
+                                }).then(streamObj => {
+                                    stream = streamObj;
+                                    vid.srcObject = stream;
+                                    vid.onplaying = () => {
+                                        // Size canvas to actual track settings to avoid implicit resizes/copies.
+                                        const s = vid.videoWidth && vid.videoHeight ? {width:vid.videoWidth, height:vid.videoHeight} : {width:w, height:h};
+                                        canvas.width  = s.width;
+                                        canvas.height = s.height;
+                                        running = true;
+                                        frames = 0; prevTs = 0; copyTimes = []; interTimes = [];
+                                        statsEl.textContent = 'Running…';
+                                        loop();
+                                    };
+                                    vid.play();
+                                }).catch(e => {
+                                    statsEl.textContent = 'getUserMedia error: ' + e.message;
+                                    startBtn.disabled = false;
+                                    stopBtn.disabled = true;
+                                });
+                            }
+
+                            function stop() {
+                                running = false;
+                                stopBtn.disabled = true;
+                                startBtn.disabled = false;
+                                if (stream) {
+                                    stream.getTracks().forEach(t => t.stop());
+                                    stream = null;
+                                }
+                                updateStats();
+                            }
+
+                            function loop() {
+                                if (!running) return;
+                                frames++;
+                                const ts = performance.now();
+                                if (prevTs) interTimes.push(ts - prevTs);
+                                prevTs = ts;
+
+                                if (useBitmapCB.checked) {
+                                    const t0 = performance.now();
+                                    createImageBitmap(vid).then(bitmap => {
+                                        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+                                        bitmap.close();
+                                        const t1 = performance.now();
+                                        copyTimes.push(t1 - t0);
+                                        if (copyTimes.length > 240) copyTimes.shift();
+                                        if (interTimes.length > 240) interTimes.shift();
+                                        if ((frames & 15) === 0) updateStats();
+                                        requestAnimationFrame(loop);
+                                    });
+                                } else {
+                                    const t0 = performance.now();
+                                    ctx.drawImage(vid, 0, 0, canvas.width, canvas.height);
+                                    const t1 = performance.now();
+                                    copyTimes.push(t1 - t0);
+                                    if (copyTimes.length > 240) copyTimes.shift();
+                                    if (interTimes.length > 240) interTimes.shift();
+                                    if ((frames & 15) === 0) updateStats();
+                                    requestAnimationFrame(loop);
+                                }
+                            }
+
+                            startBtn.addEventListener('click', start);
+                            stopBtn.addEventListener('click', stop);
+                            </script>
                 const ts = performance.now();
                 if (prevTs) interTimes.push(ts - prevTs);
                 prevTs = ts;
