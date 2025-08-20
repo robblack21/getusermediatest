@@ -67,8 +67,7 @@
 
                     function updateStats() {
                         const fps = interTimes.length ? (1000 / (interTimes.reduce((a,b)=>a+b,0)/interTimes.length)).toFixed(1) : 'n/a';
-                        statsEl.textContent =
-            `frames: ${frames}
+                        statsEl.textContent = 'frames: ${frames}';
                                 if (prevTs) interTimes.push(ts - prevTs);
                                 prevTs = ts;
 
@@ -149,9 +148,7 @@
 
                     startBtn.addEventListener('click', start);
                     stopBtn.addEventListener('click', stop);
-                    </script>
-            </body>
-            </html>
+ 
                                 if (useBitmapCB.checked) {
                                     const t0 = performance.now();
                                     createImageBitmap(vid).then(bitmap => {
@@ -174,11 +171,7 @@
                                     if ((frames & 15) === 0) updateStats();
                                     requestAnimationFrame(loop);
                                 }
-                            }
-
-                            startBtn.addEventListener('click', start);
-                            stopBtn.addEventListener('click', stop);
-                            </script>
+                      
                 const ts = performance.now();
                 if (prevTs) interTimes.push(ts - prevTs);
                 prevTs = ts;
@@ -205,7 +198,6 @@
                     if ((frames & 15) === 0) updateStats();
                     requestAnimationFrame(loop);
                 }
-            }
 
             startBtn.addEventListener('click', start);
             stopBtn.addEventListener('click', stop);
