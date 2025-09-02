@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>WebCodecs Camera Test</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: sans-serif; background: #f8f8f8; margin: 0; padding: 0; }
+    .container { max-width: 500px; margin: 2em auto; background: #fff; border-radius: 8px; box-shadow: 0 2px 8px #ccc; padding: 2em; }
+    .controls { margin-bottom: 1em; }
+    button, label { margin-right: 1em; }
+    #canvas { width: 100%; max-width: 480px; background: #222; border-radius: 4px; }
+    #video { width: 100%; max-width: 480px; display: none; border-radius: 4px; }
+    #stats { margin-top: 1em; font-size: 0.95em; color: #444; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>WebCodecs Camera Test</h2>
+    <div class="controls">
+      <button id="startBtn">Start Camera</button>
+      <button id="stopBtn" disabled>Stop Camera</button>
+      <label><input type="checkbox" id="showVideo"> Show Video Element</label>
+    </div>
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas" width="480" height="360"></canvas>
+    <div id="stats"></div>
+  </div>
+  <script>
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const showVideo = document.getElementById('showVideo');
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const stats = document.getElementById('stats');
+    let stream = null;
+    let animationId = null;
+    let videoTrackReader = null;
+    let decoder = null;
+    let frameCount = 0;
+    let startTime = null;
+
+    showVideo.addEventListener('change', () => {
+      video.style.display = showVideo.checked ? 'block' : 'none';
+    });
+
+    startBtn.onclick = async () => {
+      startBtn.disabled = true;
+      stopBtn.disabled = false;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        video.srcObject = stream;
+        if (showVideo.checked) video.style.display = 'block';
+        else video.style.display = 'none';
+        startWebCodecs(stream);
+      } catch (err) {
+        stats.textContent = 'Error: ' + err.message;
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      }
+    };
+
+    stopBtn.onclick = () => {
+      stopBtn.disabled = true;
+      startBtn.disabled = false;
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+      if (videoTrackReader) {
+        videoTrackReader.cancel();
+        videoTrackReader = null;
+      }
+      if (decoder) {
+        decoder.close();
+        decoder = null;
+      }
+      cancelAnimationFrame(animationId);
+      video.srcObject = null;
+      stats.textContent = '';
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    };
+
+    async function startWebCodecs(stream) {
+      const [track] = stream.getVideoTracks();
+      if (!track) {
+        stats.textContent = 'No video track found.';
+        return;
+      }
+      // Create a MediaStreamTrackProcessor
+      let processor;
+      try {
+        processor = new window.MediaStreamTrackProcessor({ track });
+      } catch (e) {
+        stats.textContent = 'WebCodecs not supported on this browser.';
+        return;
+      }
+      videoTrackReader = processor.readable.getReader();
+      decoder = new window.VideoFrame(); // Dummy to check support
+      frameCount = 0;
+      startTime = performance.now();
+      const ctx = canvas.getContext('2d');
+      function readFrame() {
+        videoTrackReader.read().then(({ value, done }) => {
+          if (done) return;
+          frameCount++;
+          // Draw VideoFrame to canvas
+          if (value) {
+            ctx.drawImage(value, 0, 0, canvas.width, canvas.height);
+            value.close();
+          }
+          // Update stats
+          const elapsed = (performance.now() - startTime) / 1000;
+          stats.textContent = `Frames: ${frameCount} | FPS: ${(frameCount/elapsed).toFixed(1)}`;
+          animationId = requestAnimationFrame(readFrame);
+        });
+      }
+      readFrame();
+    }
+  </script>
+</body>
+</html>
